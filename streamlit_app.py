@@ -1,23 +1,9 @@
-import streamlit as st
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
+import time
 
-# Configure the page
-st.set_page_config(page_title="NCERT and CBSE problem solving tutor ")
-
-# Initialize OpenAI client using API key from Streamlit secrets
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# Set the app title
-st.title("NCERT and CBSE problem solving tutor ")
-
-# Initialize chat history in session state
-if "messages" not in st.session_state:
-    st.session_state["messages"] = []
-
-
 def get_response(history, user_input: str) -> str:
-    """Send conversation history and new user input to OpenAI and return the response."""
-    # Start with a system message to guide the assistant's behavior
     messages = [
         {
             "role": "system",
@@ -28,12 +14,27 @@ def get_response(history, user_input: str) -> str:
             ),
         }
     ]
-
-    # Add previous conversation history
     messages.extend(history)
-
-    # Add the new user message
     messages.append({"role": "user", "content": user_input})
+
+    # Simple retry loop for transient rate limits
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=messages,
+                temperature=0.7,
+            )
+            return response.choices[0].message.content
+        except RateLimitError:
+            # Wait a bit and try again
+            time.sleep(2 * (attempt + 1))
+
+    # If still failing after retries, show a friendly message
+    return (
+        "The tutoring service is currently receiving too many requests. "
+        "Please wait a bit and try again."
+    )
 
     # Call OpenAI Chat Completions API
     response = client.chat.completions.create(
@@ -69,3 +70,4 @@ if user_input:
     # Display assistant reply
     with st.chat_message("assistant"):
         st.markdown(assistant_reply)
+
